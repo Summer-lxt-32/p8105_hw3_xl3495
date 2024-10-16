@@ -261,52 +261,159 @@ ggplot(track_activity_df, aes(x = time, y = mims, color = sex)) +
 Above is the line plot tracking 24-Hour activity with minute intervals, grouped by education levels and sex. It can be figured out that no matter what the sex or education level is, people have similar active patterns during 24 hours, most activity happen during days and there is a decrease at nights.
 
 # Problem 3
+
+## Import, clean, and combine datasets
+
 ```{r message=FALSE}
 jan_2020 = read_csv(
   file = "datasets/Jan 2020 Citi.csv",
   na = c("NA")
-)
+) |>
+  mutate(
+    month = "Jan",
+    year = "2020"
+  )
 
 jan_2024 = read_csv(
   file = "datasets/Jan 2024 Citi.csv",
   na = c("NA")
-)
+) |>
+  mutate(
+    month = "Jan",
+    year = "2024"
+  )
 
 july_2020 = read_csv(
   file = "datasets/July 2020 Citi.csv",
   na = c("NA")
-)
+) |>
+  mutate(
+    month = "July",
+    year = "2020"
+  )
 
 july_2024 = read_csv(
   file = "datasets/July 2024 Citi.csv",
   na = c("NA")
-)
-
-
-
-```
-
-
-```{r}
-bind_rows(jan_2020, jan_2024, july_2020, july_2024) |>
+) |>
   mutate(
-    ride_id = row_number()
+    month = "July",
+    year = "2024"
   )
+
 ```
-
-
+Since the names of columns are already as neat as possible, I added month and year to each dataset to better combine information as below.
 
 ```{r}
-july_2024 |>
-  group_by(ride_id) |>
-  distinct()
+citi_bike = bind_rows(jan_2020, jan_2024, july_2020, july_2024) |>
+  relocate(ride_id, year, month, weekdays) |>
+  mutate(
+    ride_id = row_number(),
+    rideable_type = gsub("_.*", "", rideable_type),
+    rideable_type = fct(rideable_type),
+    member_casual = fct(member_casual)
+  )
+
+na_stat = citi_bike |>
+  filter(if_any(everything(), is.na))
+
+head(citi_bike)
+```
+I reordered the columns to show time and more detailed information (containing bike type, duration, the start and end station, membership info) about each order and relabeled each record with a unique ride_id (since I tested every piece of record is distinct). Because there are only two types of bikes and two types of membership, so I changed `rideable_type` and `member_casual` to factor variables.
+
+*`na_stat` are reserved for those orders with some information missing, specifically, station names.
+
+## Total number of rides in each M/Y
+
+```{r}
+mem_data = citi_bike |>
+  mutate(
+    time = paste(year, month)
+  ) |>
+  group_by(time, member_casual) |>
+  summarise(
+    count = n()
+  ) |>
+  pivot_wider(
+    names_from = member_casual,
+    values_from = count
+  )
+
+mem_tbl = kable(mem_data)
+
+mem_tbl
+```
+Above is the table describing the total number of rides in each combination of year and month separating casual riders and Citi Bike members. It show that people with a membership ride multiple times more than casual riders in all combination of year and month.
+
+## 5 most popular starting stations for July 2024
+
+```{r}
+pop_stat = citi_bike |>
+  filter(
+    year == "2024",
+    month == "July"
+  ) |>
+  group_by(
+    start_station_name
+  ) |>
+  summarise(
+    count = n()
+  ) |>
+  arrange(desc(count)) |>
+  head(5)
+
+pop_tbl = kable(pop_stat)
+
+pop_tbl
 ```
 
+## Median Ride Duration Analysis
 
+```{r}
+median_duration = citi_bike |>
+  group_by(weekdays, month, year) |>
+  mutate(
+    weekdays = factor(weekdays, levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+    ) |>
+  summarise(median = median(duration, na.rm = TRUE), .groups = 'drop')
 
+ggplot(median_duration, aes(x = weekdays, y = median, color = month, group = month)) +
+  geom_line() +
+  geom_point() +
+  facet_grid(. ~ year) +
+  labs(title = "Median Ride Duration by Weekdays, Month, and Year",
+       x = "Weekdays",
+       y = "Median Ride Duration (minutes)",
+       color = "Month") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+  
+```
 
+Above is the line plot with points showing median ride duration by weekdays, months and years. It is shown that in both 2020 and 2024, the median of ride duration of weekends tend to be longer than weekdays, slightly abnormal for Sundays in Jan, 2024. And for both 2020 and 2024, the median of ride duration of July is longer than that of January for all weekdays. Compared between 2020 and 2024, the median of ride duration of both January and July for all weekdays has a decrease, especially in July.
 
+## Impact of Month, Membership Status, and Bike Type on Ride Duration
 
+```{r}
+duration_df = citi_bike |>
+  filter(year == "2024") |>
+  mutate(
+    month = factor(month, levels = c("Jan", "July"))
+  )
+  
+  
+ggplot(duration_df, aes(x = month, y = duration, fill = rideable_type)) +
+  geom_violin(trim = TRUE) +
+  facet_wrap(~ member_casual) +
+  labs(title = "Impact of Month, Membership Status, and Bike Type on Ride Duration",
+       x = "Month",
+       y = "Ride Duration (minutes)",
+       fill = "Bike Type") +
+  theme_minimal()
+```
+
+Above is the violin plot that shows the impact of month, membership status, and bike type on the distribution of ride duration in 2024. It can be concluded that the ride duration of January is usually longer than July, no matter the rider has a membership or not. When it comes to the comparison between classic and electric bikes, the ride duration of classic bikes are often longer than that of the electric ones. And if the rider has a membership, it is more likely to have a shorter ride duration.
 
 
 
