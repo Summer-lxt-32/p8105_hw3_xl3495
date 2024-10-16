@@ -5,22 +5,317 @@ date: "2024-10-14"
 output: github_document
 ---
 
-```{r}
+```{r setup, include=FALSE}
 library(tidyverse)
+library(ggridges)
+library(patchwork)
+library(knitr)
 
+library(p8105.datasets)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
 ```
 
 # Problem 1
 
 Load the dataset.
 ```{r}
-library(p8105.datasets)
 data("ny_noaa")
 ```
 
 ```{r}
+row = nrow(ny_noaa)
+col = ncol(ny_noaa)
+```
+
+The `ny_noaa` dataset has `r row` rows and `r col`  columns, containing 7 variables in total. Variables:  
+`id`: weather station id  
+`date`: date of observation  
+`prcp`: precipitation (tenths of mm)  
+`snow`: snowfall (mm)
+`snwd`: snow depth (mm)
+`tmax` and `tmin`: maximum and minimum of temperature (tenths of degrees C)
+
+Below are some explorations. I extracted year from date variable into a new `chr` variable named `year`. Grouping by weather station id and year, I calculated average precipitation(mm) and snow fall(mm) for each year observed by each station. Then, I got the maximum annual mean precipitation and maximum annual mean snow fall recorded by each station through year 1980-2010.
+```{r}
+df_1 = ny_noaa |>
+  filter((!is.na(prcp)) & (!is.na(snow))) |>
+  mutate(year = format(date, "%Y")) |>
+  group_by(id, year) |>
+  summarise(avg_prcp = mean(prcp),
+            avg_snow = mean(snow))
+
+max_avg_prcp = max(df_1 |>
+                     pull(avg_prcp))
+max_avg_snow = max(df_1 |>
+                     pull(avg_snow))
+```
+
+## Answers
+
+Below we clean the data, creating separate variables for year, month, and day and converting `tmax` and `tmin` to numeric. We find that 0 is the most commonly observed value for snowfall. This is because most days of the year, it does not snow at all in NY. The second most commonly observed value is `NA`, indicating missingness. Other common values are 13, 25, and 51, suggesting that snowfall is originally recorded in fractions of an inch and converted to mm.
+
+```{r}
+ny_noaa %>% 
+  count(snow) %>%
+  arrange(desc(n))
+
+ny_noaa = 
+  ny_noaa %>% 
+  separate(date, into = c("year", "month", "day"), convert = TRUE) %>% 
+  mutate(
+    tmax = as.numeric(tmax),
+    tmin = as.numeric(tmin))
+```
+
+Below is a two-panel plot showing the average max temperature in January and in July in each station across years. As expected, the mean temperature in January is much lower than the mean temperature in July for all stations and across all years. All stations appear to follow similar trends of temperature peaks and valleys within a month across the years, i.e. when one station has a high monthly mean temperature for a given year, most other stations also have a high monthly mean temperature for that year. We do see one uncharacteristically cold station in July of 1987 or 1988, as well as a few other less drastic outliers.
+
+```{r}
+ny_noaa %>% 
+  group_by(id, year, month) %>% 
+  filter(month %in% c(1, 7)) %>% 
+  summarize(mean_tmax = mean(tmax, na.rm = TRUE, color = id)) %>% 
+  ggplot(aes(x = year, y = mean_tmax, group = id)) + geom_point() + geom_path() +
+  facet_grid(~month) +
+  labs(title = "Mean monthly temperature for each station across years for January and July")
+```
+
+Below we show a two-panel plot including (i) a hex plot of `tmax` vs `tmin` for the full dataset; and (ii) a ridge plot showing the distribution of snowfall values (in mm) greater than 0 and less than 100 separately by year. 
+
+From the hex plot we see that while there is some variability, the majority of the data cluster tightly in the center of the distribution. In relatively rare cases, it seems that `tmax` is less than `tmin`, which raises questions about data recording and quality.
+
+From the ridge plot, we see a multimodal density of snowfall within a given year. Most stations see between 0 and  35 mm of snow in a year. Then there is a another group of stations that see about 45 mm of snow, and another group that sees nearly 80 mm. It is likely this multimodality stems from the conversion of measurements in one system (fractions of an inch) to another (using the metric system), which was also noted in the table of common values. 
+
+```{r}
+hex = 
+  ny_noaa %>% 
+  ggplot(aes(x = tmin, y = tmax)) + 
+  geom_hex()
+
+ridge = 
+  ny_noaa %>% 
+  filter(snow < 100, snow > 0) %>%
+  ggplot(aes(x = snow, y = as.factor(year))) + 
+  geom_density_ridges()
+
+hex + ridge
+```
+
+
+# Problem 2
+
+## Read the data
+```{r}
+covar_data = read_csv(
+  file = "datasets/nhanes_covar.csv",
+  skip = 4,
+  na = c("NA")
+)
+
+accel_data = read_csv(
+  file = "datasets/nhanes_accel.csv"
+)
 
 ```
+
+## Clean the data
+```{r}
+covar_data = covar_data |>
+  janitor::clean_names() |>
+  filter(age >= 21) |>
+  drop_na() |>
+  mutate(
+    sex = case_match(
+      sex,
+      1 ~ "male",
+      2 ~ "female"
+    ),
+    education = case_match(
+      education,
+      1 ~ "Less than high school",
+      2 ~ "High school equivalent",
+      3 ~ "More than high school"
+    )
+  ) |>
+  mutate(
+    sex = factor(sex),
+    education = factor(education, ordered = TRUE),
+    education = fct_relevel(education, "Less than high school", "High school equivalent", "More than high school")
+    )
+  
+accel_data = accel_data |>
+  janitor::clean_names() |>
+  pivot_longer(
+    cols = min1:min1440,
+    names_to = "time",
+    values_to = "mims"
+    )
+
+combined_df = left_join(covar_data, accel_data, by = "seqn")
+head(combined_df)
+```
+
+## Table of Number of Men and Women in each Education Category
+```{r}
+edu_data = combined_df |>
+  group_by(sex, education) |>
+  summarise(
+    count = n()
+  ) |>
+  pivot_wider(
+    names_from = sex, values_from = count
+    )
+
+edu_tbl = kable(edu_data)
+edu_tbl
+```
+This table contains information of number of men and women in each education category. To read and understand easily, I used three levels to interpret education levels:  
+`More than high school`;  
+`Less than high school`;  
+`High school equivalent`.  
+According to the table, there are 84960 female and 80640 male whose education level is more than high school; 40320 female and 38880 male whose education level is less than high school; 33120 female and 50400 male whose education level is high school equivalent. It was found that around half (most) participants in this research got high education. Though there are more female than male who got high education, it can also be found that there are still a lot of female who got low education, while that's a relatively small proportion in male.
+
+## Age Distribution by Education and Gender
+
+```{r}
+age_dist_df = combined_df |>
+  select(seqn, sex, age, education) |>
+  group_by(seqn) |>
+  distinct()
+
+ggplot(age_dist_df, aes(x = age, fill = sex)) +
+  geom_density(alpha = 0.5) +
+  facet_grid(sex ~ education) +
+  labs(title = "Age Density Distribution by Education and Gender",
+       x = "Age",
+       y = "Density") +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+Above is the density plot for age distribution by education and gender. According to the plot, among those who have a education level of less than high school, ages of both females and males are distributed around 70 years old, there is also a small concentration around 45 years old among males. The age distribution of females who are high school equivalent shows that the older you get, the more people you have; the age distribution of males who are high school equivalent performs a slight fluctuation trend. Females whose education are more than high school are largely distributed around 34 years old, and males are mostly distributed around 30 years old. The overall distribution shows the young often get higher education than the old.
+
+## Total Activity vs. Age by Gender and Education Level
+
+```{r}
+total_activity_df = combined_df |>
+  group_by(seqn) |>
+  mutate(
+    total_activity = sum(mims)
+  ) |>
+  select(seqn, sex, age, education, total_activity) |>
+  distinct()
+
+ggplot(total_activity_df, aes(x = age, y = total_activity, color = sex)) +
+  geom_point(alpha = 0.6) +
+  scale_color_manual(values = c("male" = "blue", "female" = "pink")) +
+  geom_smooth(se = FALSE) +
+  facet_grid(. ~ education) +
+  labs(title = "Total Activity vs. Age by Gender and Education Level",
+       x = "Age",
+       y = "Total Activity") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+Above is the scatter plot with a trend line of total activity against age and sex. The trend lines in the three plots though showing some waves, they all illustrate the young has a higher total activity amount than the old, no matter the sex. What's more, males have more total activity than females with education level of less than high school, things are converse for the rest two education levels.
+
+## 24-Hour Activity Time Courses by Education Level
+
+```{r}
+track_activity_df = combined_df |>
+  mutate(
+    time = as.numeric(gsub("min", "", time))
+  )
+
+ggplot(track_activity_df, aes(x = time, y = mims, color = sex)) +
+  geom_line(alpha = 0.2, aes(group = seqn)) +
+  geom_smooth(aes(group = sex), se = FALSE) +
+  labs(title = "24-Hour Activity Time Courses by Education Level",
+       x = "Minute of Day",
+       y = "Activity / MIMS") +
+  facet_grid(.~education) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  theme(strip.placement = "outside") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+```
+Above is the line plot tracking 24-Hour activity with minute intervals, grouped by education levels and sex. It can be figured out that no matter what the sex or education level is, people have similar active patterns during 24 hours, most activity happen during days and there is a decrease at nights.
+
+# Problem 3
+```{r message=FALSE}
+jan_2020 = read_csv(
+  file = "datasets/Jan 2020 Citi.csv",
+  na = c("NA")
+)
+
+jan_2024 = read_csv(
+  file = "datasets/Jan 2024 Citi.csv",
+  na = c("NA")
+)
+
+july_2020 = read_csv(
+  file = "datasets/July 2020 Citi.csv",
+  na = c("NA")
+)
+
+july_2024 = read_csv(
+  file = "datasets/July 2024 Citi.csv",
+  na = c("NA")
+)
+
+
+
+```
+
+
+```{r}
+bind_rows(jan_2020, jan_2024, july_2020, july_2024) |>
+  mutate(
+    ride_id = row_number()
+  )
+```
+
+
+
+```{r}
+july_2024 |>
+  group_by(ride_id) |>
+  distinct()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
