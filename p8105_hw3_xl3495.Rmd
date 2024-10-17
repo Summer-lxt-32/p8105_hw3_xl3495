@@ -413,7 +413,7 @@ ggplot(duration_df, aes(x = month, y = duration, fill = rideable_type)) +
   theme_minimal()
 ```
 
-Above is the violin plot that shows the impact of month, membership status, and bike type on the distribution of ride duration in 2024. It can be concluded that the ride duration of January is usually longer than July, no matter the rider has a membership or not. When it comes to the comparison between classic and electric bikes, the ride duration of classic bikes are often longer than that of the electric ones. And if the rider has a membership, it is more likely to have a shorter ride duration.
+Above is the violin plot that shows the impact of month, membership status, and bike type on the distribution of ride duration in 2024. It can be concluded that the ride duration of January is usually longer than July, no matter the rider has a membership or not. When it comes to the comparison between classic and electric bikes, the ride duration of classic bikes are often longer than that of the electric ones. And if the rider has a membership, it is more likely to have a shorter ride duration. This may due to members have more chance to get easier trips, especially for the long ride. I originally thought the duration of electric bikes may be shorter than that of the classics, but the pattern is not obvious, things may be inverse due to people not want to ride on foot for the long ride.
 
 
 
