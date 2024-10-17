@@ -165,7 +165,10 @@ accel_data = accel_data |>
     cols = min1:min1440,
     names_to = "time",
     values_to = "mims"
-    )
+    ) |>
+  mutate(
+    time = as.numeric(gsub("min", "", time))
+  )
 
 combined_df = left_join(covar_data, accel_data, by = "seqn")
 head(combined_df)
@@ -239,12 +242,8 @@ Above is the scatter plot with a trend line of total activity against age and se
 ## 24-Hour Activity Time Courses by Education Level
 
 ```{r}
-track_activity_df = combined_df |>
-  mutate(
-    time = as.numeric(gsub("min", "", time))
-  )
 
-ggplot(track_activity_df, aes(x = time, y = mims, color = sex)) +
+ggplot(combined_df, aes(x = time, y = mims, color = sex)) +
   geom_line(alpha = 0.2, aes(group = seqn)) +
   geom_smooth(aes(group = sex), se = FALSE) +
   labs(title = "24-Hour Activity Time Courses by Education Level",
